@@ -30,14 +30,30 @@ jobs:
           tar -xf llvm-mingw-20260421-ucrt-macos-universal.tar.xz
           rm llvm-mingw-20260421-ucrt-macos-universal.tar.xz
 
+      - name: Inspect airconv Error Logs (Debug)
+        if: failure()
+        run: |
+          echo "=== Printing airconv build errors ==="
+          for err_file in build/dxmt-ios/obj/*.err; do
+            if [ -f "$err_file" ]; then
+              echo "--- $err_file ---"
+              cat "$err_file"
+            fi
+          done
+
       - name: Build Native Dependencies
         run: |
-          # Set up LLVM paths for airconv
-          LLVM_PATH=$(brew --prefix llvm)
-          export PATH="$LLVM_PATH/bin:$PATH"
-          export LDFLAGS="-L$LLVM_PATH/lib $LDFLAGS"
-          export CPPFLAGS="-I$LLVM_PATH/include $CPPFLAGS"
-          export CXXFLAGS="-I$LLVM_PATH/include $CXXFLAGS"
+          # Locate Homebrew LLVM path dynamically
+          LLVM_PREFIX=$(brew --prefix llvm)
+          
+          # Export LLVM pathing for build scripts and compilers
+          export PATH="$LLVM_PREFIX/bin:$PATH"
+          export LLVM_DIR="$LLVM_PREFIX/lib/cmake/llvm"
+          export LLVM_CONFIG="$LLVM_PREFIX/bin/llvm-config"
+          export LDFLAGS="-L$LLVM_PREFIX/lib -L$LLVM_PREFIX/lib/c++ -Wl,-rpath,$LLVM_PREFIX/lib $LDFLAGS"
+          export CPPFLAGS="-I$LLVM_PREFIX/include $CPPFLAGS"
+          export CXXFLAGS="-I$LLVM_PREFIX/include $CXXFLAGS"
+          export CFLAGS="-I$LLVM_PREFIX/include $CFLAGS"
 
           find . -type f -name "*.sh" -exec chmod +x {} +
           for script in build/*/build.sh; do
