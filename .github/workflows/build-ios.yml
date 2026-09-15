@@ -49,6 +49,7 @@ jobs:
           cmake -G Ninja \
             -S toolchains/llvm-project/llvm \
             -B toolchains/llvm-ios-build \
+            -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DCMAKE_OSX_SYSROOT="$SDK" \
@@ -62,7 +63,8 @@ jobs:
             -DLLVM_BUILD_UTILS=OFF \
             -DLLVM_ENABLE_TERMINFO=OFF \
             -DLLVM_ENABLE_ZLIB=OFF \
-            -DLLVM_ENABLE_LIBXML2=OFF
+            -DLLVM_ENABLE_LIBXML2=OFF \
+            -DLLVM_ENABLE_BINDINGS=OFF
 
           # These Config headers must exist for airconv to compile
           test -f toolchains/llvm-ios-build/include/llvm/Config/llvm-config.h
