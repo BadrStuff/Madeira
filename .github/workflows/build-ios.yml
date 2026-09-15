@@ -25,7 +25,6 @@ jobs:
 
       - name: Build Native Submodules & Dependencies
         run: |
-          # If Madeira provides a setup script, invoke it here
           chmod +x ./build.sh || true
           if [ -f ./build.sh ]; then
             ./build.sh
@@ -34,7 +33,7 @@ jobs:
       - name: Build App & Archive
         run: |
           xcodebuild archive \
-            -workspace Madeira.xcworkspace \
+            -project Madeira.xcodeproj \
             -scheme Madeira \
             -sdk iphoneos \
             -configuration Release \
