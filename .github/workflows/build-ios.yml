@@ -34,8 +34,6 @@ jobs:
       - name: Fetch LLVM 15 Source (required by DXMT)
         run: |
           set -euo pipefail
-          # DXMT's docs require LLVM 15 *exactly*.
-          # Newer versions remove llvm/ADT/Optional.h and break airconv.
           if [ ! -d toolchains/llvm-project/llvm ]; then
             git clone --depth=1 --branch llvmorg-15.0.7 \
               https://github.com/llvm/llvm-project toolchains/llvm-project
@@ -66,8 +64,17 @@ jobs:
             -DLLVM_ENABLE_LIBXML2=OFF \
             -DLLVM_ENABLE_BINDINGS=OFF
 
-          # These Config headers must exist for airconv to compile
+          # Verify configure succeeded
           test -f toolchains/llvm-ios-build/include/llvm/Config/llvm-config.h
+
+      - name: Generate LLVM TableGen Headers
+        run: |
+          set -euo pipefail
+          # This is the critical step: it builds the .inc files (Attributes.inc, etc.)
+          cmake --build toolchains/llvm-ios-build --target intrinsics_gen -j 4
+
+          # Sanity check
+          test -f toolchains/llvm-ios-build/include/llvm/IR/Attributes.inc
 
       - name: Build Native Dependencies
         run: |
