@@ -46,14 +46,24 @@ jobs:
           # Locate Homebrew LLVM path dynamically
           LLVM_PREFIX=$(brew --prefix llvm)
           
+          # Force the use of Homebrew LLVM compilers
+          export CC="$LLVM_PREFIX/bin/clang"
+          export CXX="$LLVM_PREFIX/bin/clang++"
+          
           # Export LLVM pathing for build scripts and compilers
           export PATH="$LLVM_PREFIX/bin:$PATH"
           export LLVM_DIR="$LLVM_PREFIX/lib/cmake/llvm"
           export LLVM_CONFIG="$LLVM_PREFIX/bin/llvm-config"
-          export LDFLAGS="-L$LLVM_PREFIX/lib -L$LLVM_PREFIX/lib/c++ -Wl,-rpath,$LLVM_PREFIX/lib $LDFLAGS"
-          export CPPFLAGS="-I$LLVM_PREFIX/include $CPPFLAGS"
-          export CXXFLAGS="-I$LLVM_PREFIX/include $CXXFLAGS"
+          
+          # Ensure C++20 and correct standard library
+          export CXXFLAGS="-std=c++20 -stdlib=libc++ -I$LLVM_PREFIX/include $CXXFLAGS"
           export CFLAGS="-I$LLVM_PREFIX/include $CFLAGS"
+          export LDFLAGS="-L$LLVM_PREFIX/lib -stdlib=libc++ -Wl,-rpath,$LLVM_PREFIX/lib $LDFLAGS"
+
+          # Debug: Print compiler versions to ensure we are using the right ones
+          echo "Using CC: $(which $CC)"
+          echo "Using CXX: $(which $CXX)"
+          $CXX --version
 
           find . -type f -name "*.sh" -exec chmod +x {} +
           for script in build/*/build.sh; do
@@ -65,7 +75,8 @@ jobs:
               echo "========================================="
               echo "Executing $script..."
               echo "========================================="
-              bash "$script"
+              # Pass the environment variables explicitly to the script just in case
+              env CC="$CC" CXX="$CXX" CXXFLAGS="$CXXFLAGS" LDFLAGS="$LDFLAGS" LLVM_DIR="$LLVM_DIR" bash "$script"
             fi
           done
 
