@@ -30,57 +30,38 @@ jobs:
           tar -xf llvm-mingw-20260421-ucrt-macos-universal.tar.xz
           rm llvm-mingw-20260421-ucrt-macos-universal.tar.xz
 
-      - name: Patch Build Script for LLVM Paths
-        run: |
-          LLVM_PREFIX=$(brew --prefix llvm)
-          SCRIPT="build/dxmt-ios/build.sh"
-          
-          echo "Patching $SCRIPT to include Homebrew LLVM paths..."
-          
-          # 1. Add LLVM_INCLUDE and LLVM_LIB variables at the very top of the script
-          sed -i '' "1s|^|LLVM_INCLUDE=\"$LLVM_PREFIX/include\"\nLLVM_LIB=\"$LLVM_PREFIX/lib\"\n|" "$SCRIPT"
-          
-          # 2. Find lines that look like compilation commands (containing clang++ or g++) 
-          # and inject the include path. This is a safety net if CXXFLAGS is ignored.
-          # We look for common patterns in build scripts.
-          sed -i '' '/clang++/ s|$| -I'"$LLVM_PREFIX/include"' -std=c++20 -stdlib=libc++|' "$SCRIPT"
-          sed -i '' '/g++/ s|$| -I'"$LLVM_PREFIX/include"' -std=c++20 -stdlib=libc++|' "$SCRIPT"
-          
-          # 3. Ensure LDFLAGS are also appended to link commands
-          sed -i '' '/clang++/ s|$| -L'"$LLVM_PREFIX/lib"' -lLLVM|' "$SCRIPT"
-          
-          echo "First 15 lines of patched script:"
-          head -n 15 "$SCRIPT"
-          echo "..."
-          echo "Checking for injected flags:"
-          grep -n "LLVM_INCLUDE\|llvm/include" "$SCRIPT" | head -n 5
-
       - name: Build Native Dependencies
         run: |
-          # Locate Homebrew LLVM path dynamically
+          set -euo pipefail
+
           LLVM_PREFIX=$(brew --prefix llvm)
-          
+
           # Force the use of Homebrew LLVM compilers
           export CC="$LLVM_PREFIX/bin/clang"
           export CXX="$LLVM_PREFIX/bin/clang++"
-          
+
           # Export LLVM pathing for build scripts and compilers
           export PATH="$LLVM_PREFIX/bin:$PATH"
           export LLVM_DIR="$LLVM_PREFIX/lib/cmake/llvm"
           export LLVM_CONFIG="$LLVM_PREFIX/bin/llvm-config"
-          
-          # Ensure C++20 and correct standard library
-          export CXXFLAGS="-std=c++20 -stdlib=libc++ -I$LLVM_PREFIX/include $CXXFLAGS"
-          export CFLAGS="-I$LLVM_PREFIX/include $CFLAGS"
-          export LDFLAGS="-L$LLVM_PREFIX/lib -stdlib=libc++ -Wl,-rpath,$LLVM_PREFIX/lib $LDFLAGS"
 
-          # Debug: Print compiler versions to ensure we are using the right ones
+          # Ensure C++20 and correct standard library
+          export CXXFLAGS="-std=c++20 -stdlib=libc++ -I$LLVM_PREFIX/include"
+          export CFLAGS="-I$LLVM_PREFIX/include"
+          export LDFLAGS="-L$LLVM_PREFIX/lib -stdlib=libc++ -Wl,-rpath,$LLVM_PREFIX/lib"
+
+          # Debug: print compiler versions to ensure we are using the right ones
           echo "Using CC: $(which $CC)"
           echo "Using CXX: $(which $CXX)"
           $CXX --version
 
+          # Sanity check: verify LLVM headers are actually reachable
+          echo '#include <llvm/IR/Module.h>' | \
+            $CXX -std=c++20 -stdlib=libc++ -I"$LLVM_PREFIX/include" -x c++ -E - >/dev/null
+          echo "LLVM headers OK"
+
           find . -type f -name "*.sh" -exec chmod +x {} +
-          
+
           # Execute the specific dxmt-ios build script with forced env vars
           SCRIPT="build/dxmt-ios/build.sh"
           if [ -f "$SCRIPT" ]; then
@@ -107,7 +88,7 @@ jobs:
             for err_file in build/dxmt-ios/obj/*.err; do
               if [ -f "$err_file" ]; then
                 echo "--- $err_file ---"
-                head -n 20 "$err_file"
+                head -n 40 "$err_file"
               fi
             done
           else
