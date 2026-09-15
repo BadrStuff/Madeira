@@ -31,20 +31,18 @@ jobs:
           tar -xf llvm-mingw-20260421-ucrt-macos-universal.tar.xz
           rm llvm-mingw-20260421-ucrt-macos-universal.tar.xz
 
-      - name: Fetch LLVM Source (iOS-targeted)
+      - name: Fetch LLVM 15 Source (required by DXMT)
         run: |
           set -euo pipefail
-          # Only clone if not already provided as a submodule
+          # DXMT's docs require LLVM 15 *exactly*.
+          # Newer versions remove llvm/ADT/Optional.h and break airconv.
           if [ ! -d toolchains/llvm-project/llvm ]; then
-            mkdir -p toolchains
-            # Match the version DXMT's fork was built against.
-            # llvm::Optional was removed in LLVM 16, so this must be <= 15.
             git clone --depth=1 --branch llvmorg-15.0.7 \
               https://github.com/llvm/llvm-project toolchains/llvm-project
           fi
-          ls toolchains/llvm-project/llvm/CMakeLists.txt
+          test -f toolchains/llvm-project/llvm/CMakeLists.txt
 
-      - name: Configure LLVM for iOS (headers only, no full build)
+      - name: Configure LLVM for iOS (headers only)
         run: |
           set -euo pipefail
           SDK=$(xcrun --sdk iphoneos --show-sdk-path)
@@ -66,8 +64,8 @@ jobs:
             -DLLVM_ENABLE_ZLIB=OFF \
             -DLLVM_ENABLE_LIBXML2=OFF
 
-          # Sanity: the generated Config headers should now exist
-          ls toolchains/llvm-ios-build/include/llvm/Config/llvm-config.h
+          # These Config headers must exist for airconv to compile
+          test -f toolchains/llvm-ios-build/include/llvm/Config/llvm-config.h
 
       - name: Build Native Dependencies
         run: |
@@ -76,7 +74,7 @@ jobs:
 
           SCRIPT="build/dxmt-ios/build.sh"
           if [ ! -f "$SCRIPT" ]; then
-            echo "Missing $SCRIPT" >&2
+            echo "Missing $SCRIPT — submodule checkout may have failed." >&2
             exit 1
           fi
 
