@@ -20,7 +20,7 @@ jobs:
 
       - name: Install System Dependencies
         run: |
-          brew install cmake ninja pkg-config glslang
+          brew install cmake ninja pkg-config glslang llvm
 
       - name: Fetch and Install LLVM-MinGW Toolchain
         run: |
@@ -32,10 +32,16 @@ jobs:
 
       - name: Build Native Dependencies
         run: |
+          # Set up LLVM paths for airconv
+          LLVM_PATH=$(brew --prefix llvm)
+          export PATH="$LLVM_PATH/bin:$PATH"
+          export LDFLAGS="-L$LLVM_PATH/lib $LDFLAGS"
+          export CPPFLAGS="-I$LLVM_PATH/include $CPPFLAGS"
+          export CXXFLAGS="-I$LLVM_PATH/include $CXXFLAGS"
+
           find . -type f -name "*.sh" -exec chmod +x {} +
           for script in build/*/build.sh; do
             if [ -f "$script" ]; then
-              # Skip d3d11-triangle test sample as it requires Wine to execute hlsl_compile.exe
               if [[ "$script" == *"d3d11-triangle"* ]]; then
                 echo "Skipping $script (test binary requiring Wine)..."
                 continue
