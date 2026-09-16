@@ -1,4 +1,4 @@
-name: Build Madeira IPA
+name: Build Madeira Unsigned IPA
 
 on:
   push:
@@ -31,7 +31,7 @@ jobs:
           tar -xf llvm-mingw-20260421-ucrt-macos-universal.tar.xz
           rm llvm-mingw-20260421-ucrt-macos-universal.tar.xz
 
-      - name: Fetch LLVM 15 Source (required by DXMT)
+      - name: Fetch LLVM 15 Source
         run: |
           set -euo pipefail
           if [ ! -d toolchains/llvm-project/llvm ]; then
@@ -40,7 +40,7 @@ jobs:
           fi
           test -f toolchains/llvm-project/llvm/CMakeLists.txt
 
-      - name: Configure LLVM for iOS (headers only)
+      - name: Configure LLVM for iOS
         run: |
           set -euo pipefail
           SDK=$(xcrun --sdk iphoneos --show-sdk-path)
@@ -63,71 +63,84 @@ jobs:
             -DLLVM_ENABLE_ZLIB=OFF \
             -DLLVM_ENABLE_LIBXML2=OFF \
             -DLLVM_ENABLE_BINDINGS=OFF
-
-          # Verify configure succeeded
           test -f toolchains/llvm-ios-build/include/llvm/Config/llvm-config.h
 
       - name: Generate LLVM TableGen Headers
         run: |
           set -euo pipefail
-          # This is the critical step: it builds the .inc files (Attributes.inc, etc.)
           cmake --build toolchains/llvm-ios-build --target intrinsics_gen -j 4
-
-          # Sanity check
           test -f toolchains/llvm-ios-build/include/llvm/IR/Attributes.inc
 
       - name: Build Native Dependencies
         run: |
           set -euo pipefail
           find . -type f -name "*.sh" -exec chmod +x {} +
-
+          
           SCRIPT="build/dxmt-ios/build.sh"
           if [ ! -f "$SCRIPT" ]; then
             echo "Missing $SCRIPT — submodule checkout may have failed." >&2
             exit 1
           fi
-
-          echo "========================================="
-          echo "Executing $SCRIPT ..."
-          echo "========================================="
+          
           bash "$SCRIPT"
 
-      - name: Inspect airconv Error Logs (Debug)
+      - name: Inspect Build Errors (Debug)
         if: always()
         run: |
-          echo "=== Printing airconv build errors ==="
           if [ -d "build/dxmt-ios/obj" ]; then
             for err_file in build/dxmt-ios/obj/*.err; do
-              if [ -f "$err_file" ]; then
+              if [ -f "$err_file" ] && [ -s "$err_file" ]; then
                 echo "--- $err_file ---"
                 head -n 40 "$err_file"
               fi
             done
-          else
-            echo "Error directory not found!"
           fi
 
-      - name: Build Archive
+      - name: Build Unsigned Archive
         run: |
+          set -euo pipefail
           xcodebuild archive \
             -project app/Madeira.xcodeproj \
             -scheme Madeira \
             -sdk iphoneos \
             -configuration Release \
-            -archivePath $RUNNER_TEMP/Madeira.xcarchive \
+            -archivePath "$RUNNER_TEMP/Madeira.xcarchive" \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
 
-      - name: Package Unsigned IPA
+      - name: Extract and Package Unsigned IPA
         run: |
-          mkdir -p $RUNNER_TEMP/Payload
-          cp -r $RUNNER_TEMP/Madeira.xcarchive/Products/Applications/*.app $RUNNER_TEMP/Payload/
-          cd $RUNNER_TEMP
-          zip -r $GITHUB_WORKSPACE/Madeira.ipa Payload
+          set -euo pipefail
+          
+          # Extract the .app from the archive
+          mkdir -p "$RUNNER_TEMP/Payload"
+          if [ -d "$RUNNER_TEMP/Madeira.xcarchive/Products/Applications/Madeira.app" ]; then
+            cp -r "$RUNNER_TEMP/Madeira.xcarchive/Products/Applications/Madeira.app" "$RUNNER_TEMP/Payload/"
+          else
+            echo "Error: Madeira.app not found in archive"
+            find "$RUNNER_TEMP/Madeira.xcarchive" -name "*.app" -type d
+            exit 1
+          fi
+          
+          # Create the unsigned IPA (which is just a zip with Payload directory)
+          cd "$RUNNER_TEMP"
+          zip -r "$GITHUB_WORKSPACE/Madeira-unsigned.ipa" Payload
 
-      - name: Upload IPA Artifact
+      - name: Verify IPA
+        run: |
+          set -euo pipefail
+          if [ ! -f "Madeira-unsigned.ipa" ]; then
+            echo "Error: IPA file not created"
+            exit 1
+          fi
+          echo "IPA created successfully:"
+          ls -lh Madeira-unsigned.ipa
+          unzip -l Madeira-unsigned.ipa | head -20
+
+      - name: Upload Unsigned IPA
         uses: actions/upload-artifact@v4
         with:
-          name: Madeira-Unsigned-IPA
-          path: Madeira.ipa
+          name: Madeira-unsigned-ipa
+          path: Madeira-unsigned.ipa
+          retention-days: 30
